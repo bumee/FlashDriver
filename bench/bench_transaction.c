@@ -114,6 +114,7 @@ void vectored_unique_rset(uint32_t start, uint32_t end, monitor* m){
 
 	for(uint32_t i=0; i<max_num_of_req; i++){
 		key_buf[i]=max_num_of_req-1-i;
+		//wow//
 	}
 	/*
 	for(uint32_t i=0; i<max_num_of_req; i++){
