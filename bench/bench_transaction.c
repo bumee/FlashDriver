@@ -202,6 +202,8 @@ void vectored_rw(uint32_t start, uint32_t end, monitor* m, bool isseq){
 
 
 	for(uint32_t i=0; i<number_of_command/2; i++){
+
+		// 쓰는 부분 시작
 		uint32_t idx=0;
 		m->tbody[i].buf=(char*)malloc(request_buf_size + TXNHEADERSIZE);
 		char *buf=m->tbody[i].buf;
@@ -230,6 +232,7 @@ void vectored_rw(uint32_t start, uint32_t end, monitor* m, bool isseq){
 			m->write_cnt++;
 		}
 
+		// 나머지 절반 읽는 부분 시작
 		idx=0;
 		m->tbody[i+number_of_command/2].buf=(char*)malloc(request_buf_size + TXNHEADERSIZE);
 		buf=m->tbody[i+number_of_command/2].buf;
