@@ -162,16 +162,16 @@ void *vectored_main(void *__input){
 		if(mp.stopflag)
 			break;
 		type=get_next_request(_this, &inf_req, &vec_req);
-		if(type==0){
+		if(type==0){ //none
 			continue;
 		}
 		else if(type==1){ //rtry
 			inf_req->tag_num=tag_manager_get_tag(tm);
 			inf_algorithm_caller(inf_req);	
-		}else{
+		}else{ // vectored request 처리
 			uint32_t size=vec_req->size;
 			for(uint32_t i=0; i<size; i++){
-				/*retry queue*/
+				/*retry queue*/ //실패한 request들을 항상 우선처리
 				while(1){
 					request *temp_req=get_retry_request(_this);
 					if(temp_req){

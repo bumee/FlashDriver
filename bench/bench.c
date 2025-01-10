@@ -468,15 +468,25 @@ void bench_cdf_print(uint64_t nor, uint8_t type, bench_data *_d){//number of req
 	} */
 	static int cnt=0;
 	cumulate_number=0;
+	FILE *file = fopen("data.csv", "w");
+    if (!file) {
+        perror("Failed to open file");
+    }
+	fprintf(file, "x,y\n"); // 헤더 작성 (옵션)
+
 	if((type>RANDSET || type%2==0)|| type==RANDGET || type==NOR || type==FILLRAND){
 		printf("\n(%d)[cdf]read---\n",cnt++);
 		for(int i=0; i<1000000/TIMESLOT+1; i++){
 			cumulate_number+=_d->read_cdf[i];
 			if(_d->read_cdf[i]==0) continue;
 			fprintf(stderr,"%d,%ld,%f\n",i * 10,_d->read_cdf[i],(float)cumulate_number/_d->read_cnt);	
+			fprintf(file, "%d,%f\n", i*10, (float)cumulate_number/_d->read_cnt);
 			if(nor==cumulate_number)
 				break;
-		}
+	}
+    fclose(file);
+    printf("Data saved to data.csv\n");
+
 	}
 }
 #endif
@@ -520,7 +530,7 @@ void bench_reap_data(request *const req,lower_info *li){
 			_data->read_cdf[slot_num]++;
 		}
 		if(_m->r_num%1000000==0){
-		//	bench_cdf_print(_m->r_num,_m->type,_data);
+			// bench_cdf_print(_m->r_num,_m->type,_data);
 		}
 	}
 	else if(req->type==FS_SET_T){
