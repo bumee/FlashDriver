@@ -8,8 +8,8 @@ data = pd.read_csv(os.getcwd()+"/data.csv")
 # 플롯
 plt.plot(data["x"], data["y"], label="latency cdf graph", color="blue")
 plt.title("Plot of latency cdf")
-plt.xlabel("x")
-plt.ylabel("y")
+plt.xlabel("latency (ms)")
+plt.ylabel("percentage")
 plt.legend()
 plt.grid(True)
 

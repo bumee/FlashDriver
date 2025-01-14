@@ -192,7 +192,7 @@ uint32_t posix_create(lower_info *li, blockmanager *b){
 
 #if (LASYNC==1)
 	stopflag = false;
-	q_init(&p_q, 1024);
+	q_init(&p_q, 10240);
 	pthread_create(&t_id,NULL,&l_main,NULL);
 #endif
 

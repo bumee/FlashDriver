@@ -141,6 +141,11 @@ void bench_make_data(){
 		case VECTOREDRW:
 			vectored_rw(start,end, _m, false);
 			break;
+		case VECTOREDLOBSET:
+		// 우선 LOB data가 ssd에 밀려들어갈 때는 sequential하게 들어간다.
+		// 업데이트를 하는 것이 아니기 때문에 랜덤이 아니다.
+			vectored_set(start, end, _m, true);
+			break;
 #ifndef KVSSD
 		case SEQLATENCY:
 			seq_latency(start,end,50,_m);
@@ -918,52 +923,121 @@ void mixed(uint32_t start, uint32_t end,int percentage, monitor *m){
 }
 
 #ifndef KVSSD
-void seq_latency(uint32_t start, uint32_t end,int percentage, monitor *m){
-	printf("making latency bench!\n");
-	//seqset process
-	for(uint32_t i=0; i<m->m_num/2; i++){
-		m->body[i/m->bech][i%m->bech].key=start+(i%(end-start));
-		bitmap_set(m->body[i/m->bech][i%m->bech].key);
-#ifdef DVALUE
-		m->body[i/m->bech][i%m->bech].length=GET_VALUE_SIZE;
-#else
-		m->body[i/m->bech][i%m->bech].length=PAGESIZE;
-#endif
-		m->body[i/m->bech][i%m->bech].type=FS_SET_T;
-		m->body[i/m->bech][i%m->bech].mark=m->mark;
-		m->write_cnt++;
-	}
+// void seq_latency(uint32_t start, uint32_t end,int percentage, monitor *m){
+// 	printf("making latency bench!\n");
+// 	//seqset process
+// 	for(uint32_t i=0; i<m->m_num/2; i++){
+// 		m->body[i/m->bech][i%m->bech].key=start+(i%(end-start));
+// 		bitmap_set(m->body[i/m->bech][i%m->bech].key);
+// #ifdef DVALUE
+// 		m->body[i/m->bech][i%m->bech].length=GET_VALUE_SIZE;
+// #else
+// 		m->body[i/m->bech][i%m->bech].length=PAGESIZE;
+// #endif
+// 		m->body[i/m->bech][i%m->bech].type=FS_SET_T;
+// 		m->body[i/m->bech][i%m->bech].mark=m->mark;
+// 		m->write_cnt++;
+// 	}
 
-	for(uint32_t i=m->m_num/2; i<m->m_num; i++){
-#ifdef KEYGEN
-		m->body[i/m->bech][i%m->bech].key=keygenerator(end);
-#else
-		m->body[i/m->bech][i%m->bech].key=start+rand()%(end-start);
-#endif
-		if(rand()%100<percentage){
-			m->body[i/m->bech][i%m->bech].type=FS_SET_T;
-			bitmap_set(m->body[i/m->bech][i%m->bech].key);
+// 	for(uint32_t i=m->m_num/2; i<m->m_num; i++){
+// #ifdef KEYGEN
+// 		m->body[i/m->bech][i%m->bech].key=keygenerator(end);
+// #else
+// 		m->body[i/m->bech][i%m->bech].key=start+rand()%(end-start);
+// #endif
+// 		if(rand()%100<percentage){
+// 			m->body[i/m->bech][i%m->bech].type=FS_SET_T;
+// 			bitmap_set(m->body[i/m->bech][i%m->bech].key);
+// #ifdef DVALUE
+// 			m->body[i/m->bech][i%m->bech].length=GET_VALUE_SIZE;
+// #else
+// 			m->body[i/m->bech][i%m->bech].length=PAGESIZE;
+// #endif
+// 			m->write_cnt++;
+// 		}
+// 		else{
+// 			while(!bitmap_get(m->body[i/m->bech][i%m->bech].key)){
+// #ifdef KEYGEN
+// 				m->body[i/m->bech][i%m->bech].key=keygenerator(end);
+// #else
+// 				m->body[i/m->bech][i%m->bech].key=start+rand()%(end-start);
+// #endif
+// 			}
+// 			m->body[i/m->bech][i%m->bech].type=FS_GET_T;
+// 			m->body[i/m->bech][i%m->bech].length=PAGESIZE;
+// 			m->read_cnt++;
+// 		}
+// 		m->body[i/m->bech][i%m->bech].mark=m->mark;
+// 	}
+// }
+void seq_latency(uint32_t start, uint32_t end, int percentage, monitor *m) {
+    printf("making latency bench!\n");
+
+    // 값 점검
+    if (start >= end) {
+        fprintf(stderr, "Error: Invalid range (start=%u, end=%u)\n", start, end);
+        return;
+    }
+    if (!m->body) {
+        fprintf(stderr, "Error: m->body is not initialized\n");
+        return;
+    }
+
+    for (uint32_t i = 0; i < m->m_num / 2; i++) {
+        // m->body 메모리 접근 확인
+        if (i / m->bech >= m->benchsetsize || !m->body[i / m->bech]) {
+            fprintf(stderr, "Error: Invalid memory access at i=%u\n", i);
+            return;
+        }
+
+        m->body[i / m->bech][i % m->bech].key = start + (i % (end - start));
+        bitmap_set(m->body[i / m->bech][i % m->bech].key);
+
 #ifdef DVALUE
-			m->body[i/m->bech][i%m->bech].length=GET_VALUE_SIZE;
+        m->body[i / m->bech][i % m->bech].length = GET_VALUE_SIZE;
 #else
-			m->body[i/m->bech][i%m->bech].length=PAGESIZE;
+        m->body[i / m->bech][i % m->bech].length = PAGESIZE;
 #endif
-			m->write_cnt++;
-		}
-		else{
-			while(!bitmap_get(m->body[i/m->bech][i%m->bech].key)){
+        m->body[i / m->bech][i % m->bech].type = FS_SET_T;
+        m->body[i / m->bech][i % m->bech].mark = m->mark;
+        m->write_cnt++;
+    }
+
+    for (uint32_t i = m->m_num / 2; i < m->m_num; i++) {
+        if (i / m->bech >= m->benchsetsize || !m->body[i / m->bech]) {
+            fprintf(stderr, "Error: Invalid memory access at i=%u\n", i);
+            return;
+        }
+
 #ifdef KEYGEN
-				m->body[i/m->bech][i%m->bech].key=keygenerator(end);
+        m->body[i / m->bech][i % m->bech].key = keygenerator(end);
 #else
-				m->body[i/m->bech][i%m->bech].key=start+rand()%(end-start);
+        m->body[i / m->bech][i % m->bech].key = start + rand() % (end - start);
 #endif
-			}
-			m->body[i/m->bech][i%m->bech].type=FS_GET_T;
-			m->body[i/m->bech][i%m->bech].length=PAGESIZE;
-			m->read_cnt++;
-		}
-		m->body[i/m->bech][i%m->bech].mark=m->mark;
-	}
+        if (rand() % 100 < percentage) {
+            m->body[i / m->bech][i % m->bech].type = FS_SET_T;
+            bitmap_set(m->body[i / m->bech][i % m->bech].key);
+
+#ifdef DVALUE
+            m->body[i / m->bech][i % m->bech].length = GET_VALUE_SIZE;
+#else
+            m->body[i / m->bech][i % m->bech].length = PAGESIZE;
+#endif
+            m->write_cnt++;
+        } else {
+            while (!bitmap_get(m->body[i / m->bech][i % m->bech].key)) {
+#ifdef KEYGEN
+                m->body[i / m->bech][i % m->bech].key = keygenerator(end);
+#else
+                m->body[i / m->bech][i % m->bech].key = start + rand() % (end - start);
+#endif
+            }
+            m->body[i / m->bech][i % m->bech].type = FS_GET_T;
+            m->body[i / m->bech][i % m->bech].length = PAGESIZE;
+            m->read_cnt++;
+        }
+        m->body[i / m->bech][i % m->bech].mark = m->mark;
+    }
 }
 
 

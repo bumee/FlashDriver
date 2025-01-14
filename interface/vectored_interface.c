@@ -30,7 +30,7 @@ void* inf_transaction_end_req(void *req);
 extern bool TXN_debug;
 extern char *TXN_debug_ptr;
 static uint32_t seq_val;
-uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark){
+uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark, bool islob = false){
 	static uint32_t seq_num=0;
 	uint32_t idx=0;
 	vec_request *txn=(vec_request*)malloc(sizeof(vec_request));
@@ -70,7 +70,10 @@ uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark)
 				temp->value=inf_get_valueset(NULL, FS_MALLOC_R, PAGESIZE);
 				break;
 			case FS_SET_T:
-				temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
+				if(!islob)
+					temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
+				else
+					temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
 				break;
 			default:
 				printf("error type!\n");
