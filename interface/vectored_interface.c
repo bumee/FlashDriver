@@ -13,6 +13,7 @@
 
 extern master_processor mp;
 extern tag_manager *tm;
+extern char** buffers;
 static int32_t flying_cnt = QDEPTH;
 static pthread_mutex_t flying_cnt_lock=PTHREAD_MUTEX_INITIALIZER; 
 bool vectored_end_req (request * const req);
@@ -73,7 +74,7 @@ uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark,
 				if(!islob)
 					temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
 				else
-					temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
+					temp->value=inf_get_valueset(buffers[i], FS_MALLOC_W, 8192);
 				break;
 			default:
 				printf("error type!\n");

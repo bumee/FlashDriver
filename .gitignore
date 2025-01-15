@@ -1,6 +1,8 @@
 *.o
 *.a
 *.out
+*.json
+*.csv
 buse
 driver
 driver_memory_check

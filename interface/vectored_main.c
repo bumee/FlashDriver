@@ -12,6 +12,8 @@
 #include "interface.h"
 #include "vectored_interface.h"
 #include "../include/utils/kvssd.h"
+#include <cjson/cJSON.h>
+
 extern int req_cnt_test;
 extern uint64_t dm_intr_cnt;
 extern int LOCALITY;
@@ -27,68 +29,130 @@ extern master_processor mp;
 extern uint64_t cumulative_type_cnt[LREQ_TYPE_NUM];
 
 bool islob = false;
-uint32_t start = 0;
-uint32_t end = 0;
 uint64_t number = 0;
+char **buffers;
+size_t *buffer_sizes;
+int buffer_count;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size_t *buffer_sizes, int *buffer_count) {
+    FILE *csv_file = fopen(csv_file_path, "r");
+    // FILE *json_file = fopen(json_file_path, "w");
 
-void process_large_csv_to_bench(const char *csv_file_path) {
-    FILE *file = fopen(csv_file_path, "r");
-    if (!file) {
-        perror("Failed to open CSV file");
+    if (!csv_file) {
+        perror("Failed to open file");
         exit(EXIT_FAILURE);
     }
 
-    char line[4096]; // CSV 파일의 한 줄 버퍼
-    int line_count = 0;
+    char line[4096]; // line buffer
+    char *headers[256]; // buffer for headers
+    int header_count = 0;
+    int linkcount = 0;
 
-    // 첫 번째 라인을 읽어서 헤더를 건너뜀
-    if (!fgets(line, sizeof(line), file)) {
-        fprintf(stderr, "Error: Failed to read the header line\n");
-        fclose(file);
-        return;
+    // header read
+    if (fgets(line, sizeof(line), csv_file)) {
+        char *token = strtok(line, ",\n"); // separate of comma and \n
+        while (token) {
+            headers[header_count++] = strdup(token); // header store
+            token = strtok(NULL, ",\n");
+        }
     }
 
-    // CSV 파일의 각 행을 한 줄씩 읽음
-    while (fgets(line, sizeof(line), file)) {
-        line_count++;
+    // start JSON
+    // fprintf(json_file, "[\n");
 
-        // 첫 번째 행에서 시작 키 값 설정
-        if (line_count == 1) {
-            char *token = strtok(line, ",");
-            if (token == NULL) {
-                fprintf(stderr, "Error: Failed to parse start key\n");
-                fclose(file);
-                return;
+    int is_first_row = 1; // is first row?
+    int current_buffer_index = 0;
+
+    size_t buffer_capacity = 1024*K; // buffer initialization (1MB)
+    *buffers = (char **)malloc(sizeof(char *) * 20000); // maximum buffer count
+    buffer_sizes = (size_t *)calloc(20000, sizeof(size_t));
+    *buffer_count = 1;
+
+    (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
+    buffer_sizes[current_buffer_index] = 0;
+
+    // data handling
+    while (fgets(line, sizeof(line), csv_file)) {
+        linkcount++;
+        if (!is_first_row) {
+            // fprintf(json_file, ",\n");
+            snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], ",\n");
+            buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+        }
+        // fprintf(json_file, "  {\n");
+        snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "  {\n");
+        buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+
+        char *token = strtok(line, ",\n"); // read data
+        token = strtok(NULL, ",\n"); // 첫 번째 index 값 무시하고 system time부터 받아오기 시작
+        for (int i = 0; i < header_count; i++) {
+            // fprintf(json_file, "    \"%s\": ", headers[i]);
+            snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "    \"%s\": ", headers[i]);
+            buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+
+            if (token) {
+                // 숫자인지 문자열인지 판별
+                if (strspn(token, "0123456789.") == strlen(token)) {
+                    // fprintf(json_file, "%s", token); // 숫자 그대로 출력
+                    snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "%s", token);
+                    buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+                } else {
+                    // fprintf(json_file, "\"%s\"", token); // 문자열로 출력
+                    snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "\"%s\"", token);
+                    buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+                }
+                token = strtok(NULL, ",\n");
+            } else {
+                // fprintf(json_file, "null"); // 누락된 값 처리
+                snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "null");
+                buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
             }
-            start = (uint32_t)atoi(token);
+            if (i < header_count - 1) {
+                // fprintf(json_file, ",");
+                snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], ",");
+                buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
+            }
+            // fprintf(json_file, "\n");
+            snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "\n");
+            buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
         }
+        // fprintf(json_file, "  }");
+        snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "  }");
+        buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
 
-        // 마지막 행의 키 값을 계속 갱신하여 최종적으로 end에 저장
-        char *last_token = strtok(line, ",");
-        while (last_token != NULL) {
-            last_token = strtok(NULL, ",");
-        }
-        if (last_token != NULL) {
-            end = (uint32_t)atoi(last_token);
+        // `}`마다 새로운 buffer로 변경
+        current_buffer_index++;
+        (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
+        buffer_sizes[current_buffer_index] = 0;
+        (*buffer_count)++;
+        is_first_row = 0;
+
+        // 버퍼 크기 초과 방지
+        if (buffer_sizes[current_buffer_index] > buffer_capacity - 4096) {
+            buffer_capacity *= 2;
+            (*buffers)[current_buffer_index] = (char *)realloc((*buffers)[current_buffer_index], buffer_capacity);
+            if (!(*buffers)[current_buffer_index]) {
+                perror("Failed to reallocate memory for buffer");
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
-    // 요청 개수는 총 라인 수
-    // 제한된 데이터까지만 처리
-	number = (line_count / 1024) * 1024; // 1024의 배수로 맞춤
+    // fprintf(json_file, "\n]\n"); // JSON 배열 끝
 
-    fclose(file);
+    // 파일 닫기
+    fclose(csv_file);
+    // fclose(json_file);
 
-    printf("Processed %d lines from CSV file\n", line_count);
+    number = (linkcount / 1024) * 1024;
+
+    // printf("Converted CSV to JSON: %s\n", json_file_path);
+    printf("Total Buffers: %d\n", *buffer_count);
 }
 
 
 int main(int argc,char* argv[]){
-	process_large_csv_to_bench("ETH_1min.csv");
+	csv_to_json_split_buffers("ETH_1min.csv", &buffers, buffer_sizes, &buffer_count);
 
 	//int temp_cnt=bench_set_params(argc,argv,temp_argv);
 	inf_init(0,0,argc,argv);
@@ -121,5 +185,11 @@ int main(int argc,char* argv[]){
 
 	inf_free();
 	bench_custom_print(write_opt_time,11);
+    // 각 buffer에 저장된 JSON free
+    for (int i = 0; i < buffer_count; i++) {
+        free(buffers[i]); // 메모리 해제
+    }
+    free(buffers);
+    free(buffer_sizes);
 	return 0;
 }
