@@ -38,7 +38,6 @@ uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark,
 	//idx+=sizeof(uint32_t);//length;
 	txn->tid=*(uint32_t*)buf_parser(buf, &idx, sizeof(uint32_t)); //get tid;
 	txn->size=*(uint32_t*)buf_parser(buf, &idx, sizeof(uint32_t)); //request size;
-
 	txn->buf=buf;
 	txn->done_cnt=0;
 	txn->end_req=end_req;
@@ -74,7 +73,7 @@ uint32_t inf_vector_make_req(char *buf, void* (*end_req) (void*), uint32_t mark,
 				if(!islob)
 					temp->value=inf_get_valueset(NULL, FS_MALLOC_W, 4096);
 				else
-					temp->value=inf_get_valueset(buffers[i], FS_MALLOC_W, 8192);
+					temp->value=inf_get_valueset(buffers[i], FS_MALLOC_W, PAGESIZE);
 				break;
 			default:
 				printf("error type!\n");

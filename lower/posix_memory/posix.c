@@ -279,7 +279,7 @@ void *posix_push_data(uint32_t _PPA, uint32_t size, value_set* value, bool async
 		abort();
 	}
 #endif
-	//printf("seg_table %d %p, value:%d %p\n", seg_table[PPA].tag, seg_table[PPA].storage, value->dmatag, value->value);
+	// printf("seg_table %d %p, value:%d %p\n", seg_table[PPA].tag, seg_table[PPA].storage, value->dmatag, value->value);
 	memcpy(seg_table[PPA].storage,value->value,size);
 
 	req->end_req(req);
@@ -326,6 +326,8 @@ void *posix_pull_data(uint32_t _PPA, uint32_t size, value_set* value, bool async
 		abort();
 	} else {
 		memcpy(value->value,seg_table[PPA].storage,size);
+		// int* re = (int*)(value->value);
+		 printf("%s\n", value->value);
 	}
 #endif
 	req->type_lower=1;

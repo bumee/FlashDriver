@@ -144,7 +144,8 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
     fclose(csv_file);
     // fclose(json_file);
 
-    number = (linkcount / 1024) * 1024;
+    number = (*buffer_count / 1024) * 1024;
+    printf("buffer count: %d and number: %ld\n", *buffer_count, number);
 
     // printf("Converted CSV to JSON: %s\n", json_file_path);
     printf("Total Buffers: %d\n", *buffer_count);
@@ -186,6 +187,7 @@ int main(int argc,char* argv[]){
 	inf_free();
 	bench_custom_print(write_opt_time,11);
     // 각 buffer에 저장된 JSON free
+    sleep(1);
     for (int i = 0; i < buffer_count; i++) {
         free(buffers[i]); // 메모리 해제
     }

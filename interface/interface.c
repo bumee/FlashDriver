@@ -835,6 +835,11 @@ value_set *inf_get_valueset(PTR in_v, int type, uint32_t length){
 	res->from_app=false;
 	if(in_v){
 		memcpy(res->value,in_v,length);
+		//printf("%s", res->value);
+		//printf("%s\n",in_v);
+		// if(!strcmp(res->value, in_v)){
+		// 	printf("%s\n", "same");
+		// }
 	}
 	else{
 		static int cnt=0;
