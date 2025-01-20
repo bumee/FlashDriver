@@ -12,7 +12,7 @@
 #include "interface.h"
 #include "vectored_interface.h"
 #include "../include/utils/kvssd.h"
-#include <cjson/cJSON.h>
+#include <lz4.h>
 
 extern int req_cnt_test;
 extern uint64_t dm_intr_cnt;
@@ -34,7 +34,7 @@ char **buffers;
 size_t *buffer_sizes;
 int buffer_count;
 
-void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size_t *buffer_sizes, int *buffer_count) {
+void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size_t *buffer_sizes, int *buffer_count, bool compress = false) {
     FILE *csv_file = fopen(csv_file_path, "r");
     // FILE *json_file = fopen(json_file_path, "w");
 
@@ -63,9 +63,9 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
     int is_first_row = 1; // is first row?
     int current_buffer_index = 0;
 
-    size_t buffer_capacity = 1024*K; // buffer initialization (1MB)
-    *buffers = (char **)malloc(sizeof(char *) * 20000); // maximum buffer count
-    buffer_sizes = (size_t *)calloc(20000, sizeof(size_t));
+    size_t buffer_capacity = 10*K; // buffer initialization (1MB)
+    *buffers = (char **)malloc(sizeof(char *) * 187000); // maximum buffer count
+    buffer_sizes = (size_t *)calloc(187000, sizeof(size_t));
     *buffer_count = 1;
 
     (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
@@ -74,6 +74,9 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
     // data handling
     while (fgets(line, sizeof(line), csv_file)) {
         linkcount++;
+        if(linkcount>=150000){
+            break;
+        }
         if (!is_first_row) {
             // fprintf(json_file, ",\n");
             snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], ",\n");
@@ -121,6 +124,30 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
         buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
 
         // `}`마다 새로운 buffer로 변경
+        if(compress){
+            const char *json_data = (*buffers)[current_buffer_index];
+            int json_size = strlen(json_data) + 1; // 널 문자 포함
+
+            // 압축된 데이터를 저장할 버퍼
+            int max_compressed_size = LZ4_compressBound(json_size);
+            char *compressed_data = (char *)malloc(max_compressed_size);
+
+            // 압축 수행
+            int compressed_size = LZ4_compress_default(json_data, compressed_data, json_size, max_compressed_size);
+            if (compressed_size <= 0) {
+                fprintf(stderr, "Compression failed\n");
+                free(compressed_data);
+                return;
+            }
+             free((*buffers)[current_buffer_index]); // 기존 데이터 해제
+            (*buffers)[current_buffer_index] = (char *)malloc(compressed_size); // 압축된 크기만큼 새로 할당
+            memcpy((*buffers)[current_buffer_index], compressed_data, compressed_size); // 압축된 데이터 복사
+
+            // 압축된 데이터 메모리 해제
+            free(compressed_data);
+            // printf("Original size: %d bytes\n", json_size);
+            // printf("Compressed size: %d bytes\n", compressed_size);
+        }
         current_buffer_index++;
         (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
         buffer_sizes[current_buffer_index] = 0;
@@ -149,18 +176,19 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
 
     // printf("Converted CSV to JSON: %s\n", json_file_path);
     printf("Total Buffers: %d\n", *buffer_count);
-}
+}   
+
 
 
 int main(int argc,char* argv[]){
-	csv_to_json_split_buffers("ETH_1min.csv", &buffers, buffer_sizes, &buffer_count);
+	csv_to_json_split_buffers("BTC_1sec.csv", &buffers, buffer_sizes, &buffer_count, false);
 
 	//int temp_cnt=bench_set_params(argc,argv,temp_argv);
 	inf_init(0,0,argc,argv);
 	bench_init();
 	bench_vectored_configure();
 	bench_add(VECTOREDLOBSET,0,number,number);
-    bench_add(VECTOREDSGET,0,number,number);
+    // bench_add(VECTOREDSGET,0,number,number);
 	// bench_add(VECTOREDSGET,0,number,number);
 	// bench_add(VECTOREDRW,0,RANGE,RANGE*2);
 	// bench_add(VECTOREDRGET,0,RANGE/100*99,RANGE/100*99);

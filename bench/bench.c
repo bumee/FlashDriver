@@ -384,7 +384,13 @@ void bench_print(){
 		else{
 			_m->benchTime.adding.tv_sec+=_m->benchTime.adding.tv_usec/1000000;
 			_m->benchTime.adding.tv_usec%=1000000;
+			FILE *file = fopen("non_compressed_time.csv", "a");
+			if (!file) {
+				perror("Failed to open file");
+			}
 			printf("[all_time]: %ld.%ld\n",_m->benchTime.adding.tv_sec,_m->benchTime.adding.tv_usec);
+			fprintf(file, "%ld.%ld\n",_m->benchTime.adding.tv_sec,_m->benchTime.adding.tv_usec );
+			fclose(file);
 			uint64_t total_data=(PAGESIZE * _m->m_num)/1024;
 			printf("[size]: %lf(mb)\n",(double)total_data/1024);
 			double total_time=_m->benchTime.adding.tv_sec+(double)_m->benchTime.adding.tv_usec/1000000;
@@ -393,8 +399,14 @@ void bench_print(){
 			throughput*=sr;
 			printf("[FAIL NUM] %ld\n",_m->notfound);
 			fprintf(stderr,"[SUCCESS RATIO] %lf\n",sr);
+			FILE *files = fopen("non_compressed_throughput.csv", "a");
+			if (!files) {
+				perror("Failed to open file");
+			}
 			fprintf(stderr,"[throughput] %lf(kb/s)\n",throughput);
 			fprintf(stderr,"             %lf(mb/s)\n",throughput/1024);
+			fprintf(files, "%lf\n",throughput/1024);
+			fclose(files);
 			printf("[IOPS] %lf\n",_m->m_num/total_time);
 			//if(_m->read_cnt){
 			printf("[cache hit cnt,ratio] %ld, %lf\n",_m->cache_hit,(double)_m->cache_hit/(_m->read_cnt));

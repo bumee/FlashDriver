@@ -327,7 +327,7 @@ void *posix_pull_data(uint32_t _PPA, uint32_t size, value_set* value, bool async
 	} else {
 		memcpy(value->value,seg_table[PPA].storage,size);
 		// int* re = (int*)(value->value);
-		 printf("%s\n", value->value);
+		// printf("%s\n", value->value);
 	}
 #endif
 	req->type_lower=1;
