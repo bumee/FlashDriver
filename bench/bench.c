@@ -21,6 +21,7 @@ int VALUESIZE;
 bool last_ack;
 int seq_padding_opt;
 extern int32_t write_stop;
+extern double elapsed_time;
 
 master *_master;
 #ifndef KVSSD
@@ -384,16 +385,17 @@ void bench_print(){
 		else{
 			_m->benchTime.adding.tv_sec+=_m->benchTime.adding.tv_usec/1000000;
 			_m->benchTime.adding.tv_usec%=1000000;
+			double total_time=_m->benchTime.adding.tv_sec+(double)_m->benchTime.adding.tv_usec/1000000;
 			FILE *file = fopen("non_compressed_time.csv", "a");
 			if (!file) {
 				perror("Failed to open file");
 			}
+			//fprintf(file, "x\n");
 			printf("[all_time]: %ld.%ld\n",_m->benchTime.adding.tv_sec,_m->benchTime.adding.tv_usec);
-			fprintf(file, "%ld.%ld\n",_m->benchTime.adding.tv_sec,_m->benchTime.adding.tv_usec );
+			fprintf(file, "%lf\n", total_time + elapsed_time);
 			fclose(file);
 			uint64_t total_data=(PAGESIZE * _m->m_num)/1024;
 			printf("[size]: %lf(mb)\n",(double)total_data/1024);
-			double total_time=_m->benchTime.adding.tv_sec+(double)_m->benchTime.adding.tv_usec/1000000;
 			double throughput=(double)total_data/total_time;
 			double sr=1-((double)_m->notfound/_m->m_num);
 			throughput*=sr;
@@ -403,6 +405,7 @@ void bench_print(){
 			if (!files) {
 				perror("Failed to open file");
 			}
+			//fprintf(files, "x\n");
 			fprintf(stderr,"[throughput] %lf(kb/s)\n",throughput);
 			fprintf(stderr,"             %lf(mb/s)\n",throughput/1024);
 			fprintf(files, "%lf\n",throughput/1024);

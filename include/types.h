@@ -57,4 +57,12 @@ typedef enum{
 typedef enum{
 	MASTER_SEGMENT,MASTER_BLOCK,MASTER_PAGE
 }layout_type;
+
+typedef enum {
+    LZ4,
+	ZStandard,
+	Snappy,
+	None,
+} comp_type;
+
 #endif

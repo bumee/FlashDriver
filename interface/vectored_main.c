@@ -13,6 +13,7 @@
 #include "vectored_interface.h"
 #include "../include/utils/kvssd.h"
 #include <lz4.h>
+#include <zstd.h>
 
 extern int req_cnt_test;
 extern uint64_t dm_intr_cnt;
@@ -31,10 +32,14 @@ extern uint64_t cumulative_type_cnt[LREQ_TYPE_NUM];
 bool islob = false;
 uint64_t number = 0;
 char **buffers;
+char **compression_buffers[50000];
 size_t *buffer_sizes;
+size_t *comp_buffer_sizes;
 int buffer_count;
+int comp_buffer_count;
+double elapsed_time=0;
 
-void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size_t *buffer_sizes, int *buffer_count, bool compress = false) {
+void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size_t *buffer_sizes, int *buffer_count, comp_type cp) {
     FILE *csv_file = fopen(csv_file_path, "r");
     // FILE *json_file = fopen(json_file_path, "w");
 
@@ -62,14 +67,22 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
 
     int is_first_row = 1; // is first row?
     int current_buffer_index = 0;
+    int current_comp_buffer_index = 0;
 
-    size_t buffer_capacity = 10*K; // buffer initialization (1MB)
+    size_t buffer_capacity = PAGESIZE; // buffer initialization (8KB == PAGESIZE)
     *buffers = (char **)malloc(sizeof(char *) * 187000); // maximum buffer count
     buffer_sizes = (size_t *)calloc(187000, sizeof(size_t));
     *buffer_count = 1;
 
     (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
     buffer_sizes[current_buffer_index] = 0;
+
+    *compression_buffers = (char **)malloc(sizeof(char *) * 50000); // maximum buffer count
+    comp_buffer_sizes = (size_t *)calloc(50000, sizeof(size_t));
+    comp_buffer_count = 1;
+
+    (*compression_buffers)[current_comp_buffer_index] = (char *)malloc(buffer_capacity);
+    comp_buffer_sizes[current_comp_buffer_index] = 0;
 
     // data handling
     while (fgets(line, sizeof(line), csv_file)) {
@@ -123,46 +136,73 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
         snprintf((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index], buffer_capacity - buffer_sizes[current_buffer_index], "  }");
         buffer_sizes[current_buffer_index] += strlen((*buffers)[current_buffer_index] + buffer_sizes[current_buffer_index]);
 
-        // `}`마다 새로운 buffer로 변경
-        if(compress){
+        if (cp < None) {
             const char *json_data = (*buffers)[current_buffer_index];
             int json_size = strlen(json_data) + 1; // 널 문자 포함
 
             // 압축된 데이터를 저장할 버퍼
-            int max_compressed_size = LZ4_compressBound(json_size);
-            char *compressed_data = (char *)malloc(max_compressed_size);
+            int max_compressed_size;
+            int compressed_size;
+            char *compressed_data;
+            struct timeval start, end;
+            switch (cp)
+            {
+            case LZ4:
+                max_compressed_size = LZ4_compressBound(json_size);
+                compressed_data = (char *)malloc(max_compressed_size);
+                gettimeofday(&start, NULL);
+                compressed_size = LZ4_compress_default(json_data, compressed_data, json_size, max_compressed_size);
+                gettimeofday(&end, NULL);
+                break;
+            
+            case ZStandard:
+                max_compressed_size = ZSTD_compressBound(json_size);
+                compressed_data = (char *)malloc(max_compressed_size);
+                gettimeofday(&start, NULL);
+                compressed_size = ZSTD_compress(compressed_data, max_compressed_size, json_data, json_size, 1); // 압축 레벨 
+                gettimeofday(&end, NULL);
+                break;
+            
+            default:
+                break;
+            }
 
-            // 압축 수행
-            int compressed_size = LZ4_compress_default(json_data, compressed_data, json_size, max_compressed_size);
+            // 걸린 시간 계산 (초와 마이크로초를 합산)
+            elapsed_time += (end.tv_sec - start.tv_sec) + 
+                            (end.tv_usec - start.tv_usec) / 1000000.0;
+
             if (compressed_size <= 0) {
                 fprintf(stderr, "Compression failed\n");
                 free(compressed_data);
                 return;
             }
-             free((*buffers)[current_buffer_index]); // 기존 데이터 해제
-            (*buffers)[current_buffer_index] = (char *)malloc(compressed_size); // 압축된 크기만큼 새로 할당
-            memcpy((*buffers)[current_buffer_index], compressed_data, compressed_size); // 압축된 데이터 복사
+
+            // printf("buffer_capacity: %ld and buffer_sizes[%d]: %ld\n", buffer_capacity, current_comp_buffer_index, comp_buffer_sizes[current_comp_buffer_index]);
+            // 기존 데이터 크기 확인 
+            if (comp_buffer_sizes[current_comp_buffer_index] + compressed_size <= buffer_capacity) {
+                // 기존 버퍼에 충분한 공간이 있다면 데이터 복사
+                memcpy((*compression_buffers)[current_comp_buffer_index] + comp_buffer_sizes[current_comp_buffer_index], compressed_data, compressed_size);
+                comp_buffer_sizes[current_comp_buffer_index] += compressed_size;
+            } else {
+                // 충분한 공간이 없으면 새로운 버퍼로 이동
+                // 버퍼 인덱스 증가 및 새 버퍼 초기화
+                current_comp_buffer_index++;
+                (*compression_buffers)[current_comp_buffer_index] = (char *)malloc(buffer_capacity);
+                comp_buffer_sizes[current_comp_buffer_index] = 0;
+                comp_buffer_count++;
+
+                memcpy((*compression_buffers)[current_comp_buffer_index] + comp_buffer_sizes[current_comp_buffer_index], compressed_data, compressed_size);
+                comp_buffer_sizes[current_comp_buffer_index] += compressed_size;
+            }
 
             // 압축된 데이터 메모리 해제
             free(compressed_data);
-            // printf("Original size: %d bytes\n", json_size);
-            // printf("Compressed size: %d bytes\n", compressed_size);
         }
         current_buffer_index++;
         (*buffers)[current_buffer_index] = (char *)malloc(buffer_capacity);
         buffer_sizes[current_buffer_index] = 0;
         (*buffer_count)++;
         is_first_row = 0;
-
-        // 버퍼 크기 초과 방지
-        if (buffer_sizes[current_buffer_index] > buffer_capacity - 4096) {
-            buffer_capacity *= 2;
-            (*buffers)[current_buffer_index] = (char *)realloc((*buffers)[current_buffer_index], buffer_capacity);
-            if (!(*buffers)[current_buffer_index]) {
-                perror("Failed to reallocate memory for buffer");
-                exit(EXIT_FAILURE);
-            }
-        }
     }
 
     // fprintf(json_file, "\n]\n"); // JSON 배열 끝
@@ -171,17 +211,21 @@ void csv_to_json_split_buffers(const char *csv_file_path, char **buffers[], size
     fclose(csv_file);
     // fclose(json_file);
 
-    number = (*buffer_count / 1024) * 1024;
+    if(cp >= None)
+        number = (*buffer_count / 1024) * 1024;
+    else
+        number = (comp_buffer_count / 1024) * 1024;
     printf("buffer count: %d and number: %ld\n", *buffer_count, number);
 
     // printf("Converted CSV to JSON: %s\n", json_file_path);
     printf("Total Buffers: %d\n", *buffer_count);
+    printf("Total compression time: %f\n", elapsed_time);
 }   
 
 
 
 int main(int argc,char* argv[]){
-	csv_to_json_split_buffers("BTC_1sec.csv", &buffers, buffer_sizes, &buffer_count, false);
+	csv_to_json_split_buffers("BTC_1sec.csv", &buffers, buffer_sizes, &buffer_count, ZStandard);
 
 	//int temp_cnt=bench_set_params(argc,argv,temp_argv);
 	inf_init(0,0,argc,argv);
@@ -219,7 +263,12 @@ int main(int argc,char* argv[]){
     for (int i = 0; i < buffer_count; i++) {
         free(buffers[i]); // 메모리 해제
     }
+    for (int i = 0; i < comp_buffer_count; i++)
+    {
+        free(compression_buffers[i]);
+    }
     free(buffers);
     free(buffer_sizes);
+    free(comp_buffer_sizes);
 	return 0;
 }

@@ -134,6 +134,7 @@ LIBS +=\
 	-ljemalloc\
 	-lcjson\
 	-llz4\
+	-lzstd\
 #	-laio\
 
 all: cheeze_block_driver
